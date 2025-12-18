@@ -1,6 +1,8 @@
 # tmc-4671
 TMC 4671 driver for Klipper
 
+*NOTE: This is a beta driver! While it does work, it is only lightly tested, and the setup process in particular is not well tested.*
+
 The [TMC 4671](https://www.analog.com/media/en/technical-documentation/data-sheets/TMC4671-LA_datasheet_rev2.08.pdf)
 is a closed-loop field-oriented-control servo driver for brushed and brushless DC motors and stepper motors.
 
