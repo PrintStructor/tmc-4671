@@ -1201,12 +1201,13 @@ def StepHelper(config, mcu_tmc):
 
 
 class TMCErrorCheck:
-    def __init__(self, config, mcu_tmc):
+    def __init__(self, config, mcu_tmc, current_helper):
         self.printer = config.get_printer()
         name_parts = config.get_name().split()
         self.stepper_name = ' '.join(name_parts[1:])
         self.mcu_tmc = mcu_tmc
         self.fields = mcu_tmc.get_fields()
+        self.current_helper = current_helper
         self.check_timer = None
         self.status_warn_mask = self._make_mask(["PID_IQ_TARGET_LIMIT",
                                                  "PID_ID_TARGET_LIMIT",
@@ -1225,6 +1226,8 @@ class TMCErrorCheck:
                              for reg_name in DumpGroups["monitor"]
                              for n in self.fields.get_reg_fields(reg_name, 0)
                              }
+        self.monitor_data.update({'current_ux': 0., 'current_v': 0.,
+                                  'current_wy': 0.})
         # Setup for temperature query
         # Per the OpenFFBoard firmware source
         #[thermistor ffboard]
@@ -1257,11 +1260,13 @@ class TMCErrorCheck:
             fmt = self.fields.pretty_format("STATUS_FLAGS", status)
             raise self.printer.command_error("TMC 4671 '%s' reports error: %s"
                                              % (self.stepper_name, fmt))
-        #for reg_name in DumpGroups["monitor"]:
-        #    val = self.mcu_tmc.get_register(reg_name)
-        #    self.monitor_data.update(self.fields.get_reg_fields(reg_name, val))
-        #    logging.info("TMC 4671 '%s' %s: %s", self.stepper_name,
-        #                 reg_name, self.fields.pretty_format(reg_name, val))
+        ch = self.current_helper
+        self.monitor_data['current_ux'] = ch.convert_adc_current(
+            ch._read_field("ADC_IUX"))
+        self.monitor_data['current_v'] = ch.convert_adc_current(
+            ch._read_field("ADC_IV"))
+        self.monitor_data['current_wy'] = ch.convert_adc_current(
+            ch._read_field("ADC_IWY"))
     def _query_temperature(self):
         try:
             if self.adc_temp_reg is not None:
@@ -1552,7 +1557,8 @@ class TMC4671:
         # Register commands
         self.step_helper = StepHelper(config, self.mcu_tmc)
         self.current_helper = CurrentHelper(config, self.mcu_tmc)
-        self.error_helper = TMCErrorCheck(config, self.mcu_tmc)
+        self.error_helper = TMCErrorCheck(config, self.mcu_tmc,
+                                          self.current_helper)
         TMCVirtualPinHelper(config, self.mcu_tmc, self.current_helper)
         gcode.register_mux_command("SET_TMC_FIELD", "STEPPER", self.name,
                                    self.cmd_SET_TMC_FIELD,
@@ -2111,12 +2117,9 @@ class TMC4671:
     def get_status(self, eventtime=None):
         if not self.init_done:
             return {}
-        # Use cached run_current to avoid synchronous SPI reads in timer context
-        res = {'run_current': self.current_helper.run_current,
-               'current_ux': self.monitor_data.get('current_ux', 0.),
-               'current_v': self.monitor_data.get('current_v', 0.),
-               'current_wy': self.monitor_data.get('current_wy', 0.),
-               }
+        # run_current is cached; phase currents come from error_helper's
+        # periodic timer callback (_query_status) which may safely do SPI reads
+        res = {'run_current': self.current_helper.run_current}
         res.update(self.monitor_data)
         res.update(self.error_helper.get_status(eventtime))
         return res
