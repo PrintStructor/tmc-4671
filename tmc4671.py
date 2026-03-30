@@ -2111,15 +2111,12 @@ class TMC4671:
     def get_status(self, eventtime=None):
         if not self.init_done:
             return {}
-        current = self.current_helper.get_current()
-        res = {'run_current': current[0],
-               'current_ux': current[2],
-               'current_v': current[3],
-               'current_wy': current[4],
+        # Use cached run_current to avoid synchronous SPI reads in timer context
+        res = {'run_current': self.current_helper.run_current,
+               'current_ux': self.monitor_data.get('current_ux', 0.),
+               'current_v': self.monitor_data.get('current_v', 0.),
+               'current_wy': self.monitor_data.get('current_wy', 0.),
                }
-        for reg_name in DumpGroups["monitor"]:
-            val = self.mcu_tmc.get_register(reg_name)
-            self.monitor_data.update(self.fields.get_reg_fields(reg_name, val))
         res.update(self.monitor_data)
         res.update(self.error_helper.get_status(eventtime))
         return res
@@ -2404,12 +2401,15 @@ class TMC4671:
     cmd_SET_TMC_CURRENT_help = "Set the current of a TMC driver"
     def cmd_SET_TMC_CURRENT(self, gcmd):
         ch = self.current_helper
-        prev_cur, max_cur = ch.get_current()
+        # Use cached run_current to avoid live SPI reads (get_current() triggers
+        # spi_transfer which may fail in certain reactor contexts)
+        prev_cur = ch.run_current
+        max_cur = MAX_CURRENT
         run_current = gcmd.get_float('CURRENT', None, minval=0., maxval=max_cur)
         if run_current is not None:
             with self.mutex:
                 reg_val = ch.set_current(run_current)
-                prev_cur, max_cur = ch.get_current()
+                prev_cur = ch.run_current
                 print_time = self.printer.lookup_object('toolhead').get_last_move_time()
                 self.mcu_tmc.set_register("PID_TORQUE_FLUX_LIMITS", reg_val, print_time)
         gcmd.respond_info("Run Current: %0.2fA" % (prev_cur,))
