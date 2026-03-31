@@ -1228,6 +1228,7 @@ class TMCErrorCheck:
                              }
         self.monitor_data.update({'current_ux': 0., 'current_v': 0.,
                                   'current_wy': 0.})
+        self._next_adc_read = 0.
         # Setup for temperature query
         # Per the OpenFFBoard firmware source
         #[thermistor ffboard]
@@ -1260,13 +1261,7 @@ class TMCErrorCheck:
             fmt = self.fields.pretty_format("STATUS_FLAGS", status)
             raise self.printer.command_error("TMC 4671 '%s' reports error: %s"
                                              % (self.stepper_name, fmt))
-        ch = self.current_helper
-        self.monitor_data['current_ux'] = ch.convert_adc_current(
-            ch._read_field("ADC_IUX"))
-        self.monitor_data['current_v'] = ch.convert_adc_current(
-            ch._read_field("ADC_IV"))
-        self.monitor_data['current_wy'] = ch.convert_adc_current(
-            ch._read_field("ADC_IWY"))
+        # Phase current reads are deferred to _do_periodic_check
     def _query_temperature(self):
         try:
             if self.adc_temp_reg is not None:
@@ -1284,6 +1279,18 @@ class TMCErrorCheck:
         except self.printer.command_error as e:
             self.printer.invoke_shutdown(str(e))
             return self.printer.get_reactor().NEVER
+        if eventtime >= self._next_adc_read:
+            try:
+                ch = self.current_helper
+                self.monitor_data['current_ux'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IUX"))
+                self.monitor_data['current_v'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IV"))
+                self.monitor_data['current_wy'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IWY"))
+            except Exception:
+                pass
+            self._next_adc_read = eventtime + 5.
         return eventtime + 1.
     def stop_checks(self):
         if self.check_timer is None:
