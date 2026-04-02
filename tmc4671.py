@@ -1279,18 +1279,6 @@ class TMCErrorCheck:
         except self.printer.command_error as e:
             self.printer.invoke_shutdown(str(e))
             return self.printer.get_reactor().NEVER
-        if eventtime >= self._next_adc_read:
-            try:
-                ch = self.current_helper
-                self.monitor_data['current_ux'] = ch.convert_adc_current(
-                    ch._read_field("ADC_IUX"))
-                self.monitor_data['current_v'] = ch.convert_adc_current(
-                    ch._read_field("ADC_IV"))
-                self.monitor_data['current_wy'] = ch.convert_adc_current(
-                    ch._read_field("ADC_IWY"))
-            except Exception:
-                pass
-            self._next_adc_read = eventtime + 5.
         return eventtime + 1.
     def stop_checks(self):
         if self.check_timer is None:
