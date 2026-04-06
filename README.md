@@ -39,7 +39,7 @@ Klipper driver features:
 * Optional TMC6100 output driver initialisation support (requred for the eval board, not used for OpenFFBoard or Ouroboros)
 * Virtual steps-per-revolution and microsteps. Klipper treats the TMC 4671 as if it were a conventional stepper driver, all servo activity takes place in hardware. Thus the steps and microsteps in the configuration have no particular relation to the motor, and instead are translated to position angle targets within the TMC 4671.
 * Periodic STATUS_FLAGS monitoring (polls every 1 s, reports PID output limits, error sum limits, PLL lock loss)
-* Phase current monitoring via ADC (current_ux, current_v, current_wy — updated every 5 s, visible in Klipper's `get_status`)
+* Phase current monitoring via ADC (current_ux, current_v, current_wy — updated every 1 s in the same timer tick as STATUS_FLAGS, visible in Klipper's `get_status`)
 
 ## Klipper Installation
 
@@ -78,9 +78,10 @@ This fork fixes all such occurrences:
   it can access cached values without triggering SPI reads.
 * **Periodic STATUS_FLAGS polling** — restored and runs safely inside the reactor timer
   callback (`_do_periodic_check`), where SPI reads are permitted. Polls every 1 s.
-* **Phase current ADC reads** — restored in the same timer callback, throttled to
-  every 5 s to reduce bus load. Exposes `current_ux`, `current_v`, `current_wy` in
-  `get_status()`.
+* **Phase current ADC reads** — restored in the same timer callback as STATUS_FLAGS,
+  running every 1 s. Exposes `current_ux`, `current_v`, `current_wy` in `get_status()`.
+  Same freshness as Andrew's original, but reads happen safely in the timer instead of
+  in `get_status()` directly.
 
 ### Ouroboros note
 
