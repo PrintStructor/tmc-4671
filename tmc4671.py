@@ -1273,9 +1273,11 @@ class TMCErrorCheck:
             self.adc_temp = None
             return
     def _do_periodic_check(self, eventtime):
-        # STATUS_FLAGS polling remains disabled (SPI hang risk).
-        # ADC phase current reads are throttled to every 5s with exception
-        # handling so a single SPI failure does not crash Klipper.
+        try:
+            self._query_status()
+        except self.printer.command_error as e:
+            self.printer.invoke_shutdown(str(e))
+            return self.printer.get_reactor().NEVER
         if eventtime >= self._next_adc_read:
             try:
                 ch = self.current_helper
