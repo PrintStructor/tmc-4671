@@ -38,13 +38,15 @@ Klipper driver features:
 * On-driver limit switch pin support
 * Optional TMC6100 output driver initialisation support (requred for the eval board, not used for OpenFFBoard or Ouroboros)
 * Virtual steps-per-revolution and microsteps. Klipper treats the TMC 4671 as if it were a conventional stepper driver, all servo activity takes place in hardware. Thus the steps and microsteps in the configuration have no particular relation to the motor, and instead are translated to position angle targets within the TMC 4671.
+* Periodic STATUS_FLAGS monitoring (polls every 1 s, reports PID output limits, error sum limits, PLL lock loss)
+* Phase current monitoring via ADC (current_ux, current_v, current_wy — updated every 5 s, visible in Klipper's `get_status`)
 
 ## Klipper Installation
 
-To install this plugin, run the installation script using the following command over SSH. This script will download this GitHub repository to your RaspberryPi home directory, and symlink the files in the Klipper extra folder.
+To install this fork (PrintStructor), run the installation script using the following command over SSH. This script will download this GitHub repository to your RaspberryPi home directory, and symlink the files in the Klipper extra folder.
 
 ```bash
-wget -O - https://raw.githubusercontent.com/andrewmcgr/tmc-4671/main/install.sh | bash
+wget -O - https://raw.githubusercontent.com/PrintStructor/tmc-4671/main/install.sh | bash
 ```
 
 Then, add the following to your `moonraker.conf` to enable automatic updates:
@@ -53,11 +55,39 @@ Then, add the following to your `moonraker.conf` to enable automatic updates:
 type: git_repo
 channel: dev
 path: ~/tmc-4671
-origin: https://github.com/andrewmcgr/tmc-4671.git
+origin: https://github.com/PrintStructor/tmc-4671.git
 managed_services: klipper
 primary_branch: main
 install_script: install.sh
 ```
+
+## Klipper Compatibility Fixes (this fork)
+
+Newer versions of Klipper disallow synchronous SPI reads in certain reactor contexts
+(specifically any context where the reactor's pause is disabled, such as `get_status`
+callbacks and `SET_TMC_CURRENT` commands). The upstream driver performed live SPI reads
+in these contexts, which caused MCU freeze errors.
+
+This fork fixes all such occurrences:
+
+* **`get_status()`** — returns cached `run_current` instead of issuing a live SPI read.
+  The cache is kept up-to-date whenever `SET_TMC_CURRENT` is called.
+* **`SET_TMC_CURRENT`** — reads the cached value for bounds checking instead of issuing
+  a live SPI read via `ch.get_current()`.
+* **`TMCErrorCheck`** — receives the `current_helper` instance at construction time so
+  it can access cached values without triggering SPI reads.
+* **Periodic STATUS_FLAGS polling** — restored and runs safely inside the reactor timer
+  callback (`_do_periodic_check`), where SPI reads are permitted. Polls every 1 s.
+* **Phase current ADC reads** — restored in the same timer callback, throttled to
+  every 5 s to reduce bus load. Exposes `current_ux`, `current_v`, `current_wy` in
+  `get_status()`.
+
+### Ouroboros note
+
+If you are using an Ouroboros board through a USB hub, be aware that hub power-up
+latency can cause the CAN interface to appear after Klipper has already started.
+For reliable operation, connect the Ouroboros directly to the Raspberry Pi USB port
+rather than through a hub.
 
 ## How to use this driver:
 
