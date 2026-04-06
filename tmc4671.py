@@ -1273,12 +1273,21 @@ class TMCErrorCheck:
             self.adc_temp = None
             return
     def _do_periodic_check(self, eventtime):
-        try:
-            self._query_status()
-            # self._query_temperature()
-        except self.printer.command_error as e:
-            self.printer.invoke_shutdown(str(e))
-            return self.printer.get_reactor().NEVER
+        # STATUS_FLAGS polling remains disabled (SPI hang risk).
+        # ADC phase current reads are throttled to every 5s with exception
+        # handling so a single SPI failure does not crash Klipper.
+        if eventtime >= self._next_adc_read:
+            try:
+                ch = self.current_helper
+                self.monitor_data['current_ux'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IUX"))
+                self.monitor_data['current_v'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IV"))
+                self.monitor_data['current_wy'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IWY"))
+            except Exception:
+                pass
+            self._next_adc_read = eventtime + 5.
         return eventtime + 1.
     def stop_checks(self):
         if self.check_timer is None:
@@ -2036,9 +2045,11 @@ class TMC4671:
     def _dump_pid(self, n, X):
         f = "PID_%s_ACTUAL"%X
         c = [(0,0)]*(n)
+        dwell = self.printer.lookup_object('toolhead').dwell
         for i in range(n):
             cur = self._read_field(f)
             c[i]=(monotonic_ns(), cur,)
+            dwell(0.005)
         return c
 
     def _init_registers(self, print_time=None):
