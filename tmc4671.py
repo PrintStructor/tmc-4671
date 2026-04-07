@@ -1228,7 +1228,8 @@ class TMCErrorCheck:
                              }
         self.monitor_data.update({'current_ux': 0., 'current_v': 0.,
                                   'current_wy': 0.})
-        self._next_adc_read = 0.
+        self._next_status_read = 0.
+        self._next_adc_read = 2.5  # stagger vs STATUS_FLAGS
         # Setup for temperature query
         # Per the OpenFFBoard firmware source
         #[thermistor ffboard]
@@ -1273,7 +1274,9 @@ class TMCErrorCheck:
             return
     def _do_periodic_check(self, eventtime):
         try:
-            self._query_status()
+            if eventtime >= self._next_status_read:
+                self._query_status()
+                self._next_status_read = eventtime + 5.
             if eventtime >= self._next_adc_read:
                 ch = self.current_helper
                 self.monitor_data['current_ux'] = ch.convert_adc_current(
