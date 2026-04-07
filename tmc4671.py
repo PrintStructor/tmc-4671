@@ -1228,6 +1228,7 @@ class TMCErrorCheck:
                              }
         self.monitor_data.update({'current_ux': 0., 'current_v': 0.,
                                   'current_wy': 0.})
+        self._next_adc_read = 0.
         # Setup for temperature query
         # Per the OpenFFBoard firmware source
         #[thermistor ffboard]
@@ -1273,13 +1274,15 @@ class TMCErrorCheck:
     def _do_periodic_check(self, eventtime):
         try:
             self._query_status()
-            ch = self.current_helper
-            self.monitor_data['current_ux'] = ch.convert_adc_current(
-                ch._read_field("ADC_IUX"))
-            self.monitor_data['current_v'] = ch.convert_adc_current(
-                ch._read_field("ADC_IV"))
-            self.monitor_data['current_wy'] = ch.convert_adc_current(
-                ch._read_field("ADC_IWY"))
+            if eventtime >= self._next_adc_read:
+                ch = self.current_helper
+                self.monitor_data['current_ux'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IUX"))
+                self.monitor_data['current_v'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IV"))
+                self.monitor_data['current_wy'] = ch.convert_adc_current(
+                    ch._read_field("ADC_IWY"))
+                self._next_adc_read = eventtime + 5.
         except self.printer.command_error as e:
             self.printer.invoke_shutdown(str(e))
             return self.printer.get_reactor().NEVER
